@@ -1,12 +1,14 @@
 # Dinasticker Bot
 
-Converte imagens/GIFs em figurinhas estáticas (**.webp**) e animadas (**.webm**) para Telegram.
+converte imagens/GIFs em figurinhas (**.webp**) e animadas (**.webm**) pro telegram.
 
-## Requisitos
-- Windows + PowerShell + `winget`
-- Python 3.11+
-- FFmpeg no PATH (ou defina `FFMPEG_BIN` no `.env`)
-- (Opcional) CairoSVG para SVG → `cairosvg`
+## requisitos
+- windows + PowerShell + `winget`
+- python 3.11+
+- ffmpeg no PATH (ou defina `FFMPEG_BIN` no `.env`)
+- (opcional) CairoSVG para SVG → `cairosvg`
 
-## Setup rápido (Windows)
+## setup rápido (windows)
 1. Copie `.env.example` para `.env` e preencha:
+
+## duvidas, meu telegram: @guielihan ##
