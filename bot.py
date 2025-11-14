@@ -10,14 +10,12 @@ from datetime import datetime, timezone
 from PIL import Image, ImageOps
 from dotenv import load_dotenv
 
-# cairosvg é opcional (para SVG). Se não existir, só mostramos aviso ao usar SVG.
 try:
     import cairosvg
     CAIRO_OK = True
 except Exception:
     CAIRO_OK = False
 
-# OpenCV é opcional (para extrair o 1º frame de GIF/Animation MP4 do Telegram)
 try:
     import cv2
     import numpy as np
@@ -35,9 +33,6 @@ from telegram.ext import (
     ChatMemberHandler,
 )
 
-# -------------------------
-# Config & DB
-# -------------------------
 load_dotenv()
 
 BOT_TOKEN = os.getenv("BOT_TOKEN", "").strip()
@@ -58,12 +53,10 @@ def _is_valid_ffmpeg(path_str: str) -> bool:
     return p.is_file()
 
 
-# 0) Lê do .env e normaliza (remove aspas e converte barras)
 FFMPEG_BIN = os.getenv("FFMPEG_BIN", "").strip().strip('"').strip("'")
-FFMPEG_BIN = FFMPEG_BIN.replace("\\", "/")  # evita escapes do Windows
+FFMPEG_BIN = FFMPEG_BIN.replace("\\", "/") 
 
 
-# 1) Se veio do .env mas NÃO existe, zera pra tentar fallbacks
 if not _is_valid_ffmpeg(FFMPEG_BIN):
     FFMPEG_BIN = ""
 
