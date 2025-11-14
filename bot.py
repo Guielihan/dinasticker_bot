@@ -151,9 +151,6 @@ def list_groups():
     conn.close()
     return rows
 
-# -------------------------
-# Helpers
-# -------------------------
 
 SUPPORTED_MIME = {
     "image/jpeg",
@@ -178,7 +175,6 @@ def is_owner(user_id: int) -> bool:
     return user_id == OWNER_ID
 
 def is_allowed_chat(chat_id: int) -> bool:
-    # O bot só responde no grupo permitido (ALLOWED_CHAT_ID).
     return chat_id == ALLOWED_CHAT_ID
 
 async def reply_only_in_allowed(update: Update, context: ContextTypes.DEFAULT_TYPE) -> bool:
@@ -188,7 +184,6 @@ async def reply_only_in_allowed(update: Update, context: ContextTypes.DEFAULT_TY
         return False
     if is_allowed_chat(chat.id):
         return True
-    # Silenciosamente ignora fora do grupo permitido
     return False
 
 def pil_from_svg_bytes(svg_bytes: bytes) -> Image.Image:
@@ -201,7 +196,6 @@ def pil_from_svg_bytes(svg_bytes: bytes) -> Image.Image:
 def fit_to_sticker_canvas(img: Image.Image, size: int = 512) -> Image.Image:
     """Redimensiona mantendo proporção e centraliza em canvas 512x512 transparente."""
     img = img.convert("RGBA")
-    # Limita o maior lado para 'size'
     img.thumbnail((size, size), Image.LANCZOS)
     canvas = Image.new("RGBA", (size, size), (0, 0, 0, 0))
     x = (size - img.width) // 2
@@ -214,15 +208,12 @@ def convert_to_sticker_webp(input_bytes: bytes, mime_type: str, filename: str | 
     mime_type = (mime_type or "").lower()
     ext = (os.path.splitext(filename or "")[1] or "").lower()
 
-    # 1) SVG
     if mime_type == "image/svg+xml" or ext == ".svg":
         img = pil_from_svg_bytes(input_bytes)
 
-    # 2) Vídeo (Telegram Animation: geralmente video/mp4)
     elif mime_type.startswith("video/") or ext in {".mp4", ".mov", ".mkv", ".webm"}:
         if not CV2_OK:
             raise RuntimeError("eu recebi uma animação (mp4), mas o suporte a vídeo nao ta habilitado. dica: instale opencv-python")
-        # grava em arquivo temporário e captura 1º frame
         tmp_in = os.path.join(TMP_DIR, f"anim_{int(time.time()*1000)}{ext or '.mp4'}")
         with open(tmp_in, "wb") as f:
             f.write(input_bytes)
@@ -238,19 +229,17 @@ def convert_to_sticker_webp(input_bytes: bytes, mime_type: str, filename: str | 
         frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGBA)
         img = Image.fromarray(frame)
 
-    # 3) Imagens comuns (inclui GIF clássico como imagem)
     else:
         img = Image.open(io.BytesIO(input_bytes))
         try:
             if getattr(img, "is_animated", False):
-                img.seek(0)  # primeiro frame de GIF real
+                img.seek(0)
         except Exception:
             pass
         img = img.convert("RGBA")
 
     sticker_img = fit_to_sticker_canvas(img, 512)
     out = io.BytesIO()
-    # WebP estático
     sticker_img.save(out, format="WEBP", method=6, quality=95)
     out.seek(0)
     return out.read()
@@ -277,14 +266,12 @@ def convert_to_animated_sticker_webm(
     if not ext:
         ext = ".mp4" if mime_type.startswith("video/") else (".gif" if mime_type == "image/gif" else ".mp4")
 
-    # grava entrada temporária
     ts = int(time.time() * 1000)
     in_path  = os.path.join(TMP_DIR, f"in_{ts}{ext}")
     out_path = os.path.join(TMP_DIR, f"sticker_{ts}.webm")
     with open(in_path, "wb") as f:
         f.write(input_bytes)
 
-    # Filtro: escala mantendo proporção e preenche para 512x512 com fundo transparente
     vf = f"scale={max_size}:{max_size}:force_original_aspect_ratio=decrease:flags=lanczos," \
          f"pad={max_size}:{max_size}:(ow-iw)/2:(oh-ih)/2:color=0x00000000,fps={fps}"
 
@@ -311,7 +298,6 @@ def convert_to_animated_sticker_webm(
             data = f.read()
         return data
     finally:
-        # limpa temporários silenciosamente
         for p in (in_path, out_path):
             try:
                 if os.path.exists(p) and p.endswith(".webm") is False:  # mantém o .webm se falhar antes de ler
@@ -330,21 +316,17 @@ async def extract_media_bytes_and_meta(update: Update, context: ContextTypes.DEF
     msg = update.effective_message
 
     candidates = []
-    # 1) Se estiver respondendo alguém
     if msg and msg.reply_to_message:
         candidates.append(msg.reply_to_message)
-    # 2) A própria mensagem
     candidates.append(msg)
 
     for m in candidates:
-        # Photo (JPEG compactado)
         if m.photo:
-            photo = m.photo[-1]  # maior resolução
+            photo = m.photo[-1] 
             file = await bot.get_file(photo.file_id)
             data = await file.download_as_bytearray()
             return bytes(data), "image/jpeg", "photo.jpg"
 
-        # Documento com imagem
         if m.document and (m.document.mime_type in SUPPORTED_MIME or (m.document.file_name and os.path.splitext(m.document.file_name)[1].lower() in SUPPORTED_EXT)):
             file = await bot.get_file(m.document.file_id)
             data = await file.download_as_bytearray()
@@ -352,7 +334,6 @@ async def extract_media_bytes_and_meta(update: Update, context: ContextTypes.DEF
             name = m.document.file_name or "image"
             return bytes(data), mime, name
 
-        # GIF (Telegram Animation) costuma vir como MP4 (video/mp4)
         if m.animation:
             file = await bot.get_file(m.animation.file_id)
             data = await file.download_as_bytearray()
@@ -362,12 +343,7 @@ async def extract_media_bytes_and_meta(update: Update, context: ContextTypes.DEF
 
     return None, None, None
 
-# -------------------------
-# Handlers
-# -------------------------
-
 async def start_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    # Opcional: só responde no grupo permitido
     if not await reply_only_in_allowed(update, context):
         return
     await update.effective_message.reply_text("Faaala! Tudo bem? Bot das figurinhas do Dinastia na área. use /fig respondendo a uma imagem")
@@ -376,11 +352,9 @@ async def ping_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not await reply_only_in_allowed(update, context):
         return
     t0 = time.perf_counter()
-    # Faz algo simples para medir o processamento
     await asyncio.sleep(0)
     dt_ms = (time.perf_counter() - t0) * 1000
-    # Latência de entrega (servidor Telegram até aqui)
-    msg_dt = update.effective_message.date  # UTC
+    msg_dt = update.effective_message.date 
     now_utc = datetime.now(timezone.utc)
     delivery_ms = (now_utc - msg_dt).total_seconds() * 1000
     text = f"🏓 Pong!\n• processamento: {dt_ms:.1f} ms\n• entrega: {delivery_ms:.0f} ms"
@@ -390,7 +364,6 @@ async def fig_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not await reply_only_in_allowed(update, context):
         return
 
-    # Pega mídia (reply ou própria msg)
     data, mime, name = await extract_media_bytes_and_meta(update, context)
     if not data:
         await update.effective_message.reply_text(
@@ -398,7 +371,6 @@ async def fig_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
         return
 
-    # Se for SVG sem cairosvg
     if (mime or "").lower() == "image/svg+xml" and not CAIRO_OK:
         await update.effective_message.reply_text(
             "recebi um SVG, mas a conversão de SVG está desabilitada. dica: instala `cairosvg` pra ativar"
@@ -411,12 +383,10 @@ async def fig_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     try:
         if is_video_like or is_gif:
-            # Figurinha ANIMADA .webm (video sticker)
             sticker_bytes = convert_to_animated_sticker_webm(data, mime, name)
             bio = io.BytesIO(sticker_bytes)
             bio.name = "sticker.webm"
         else:
-            # Figurinha estática .webp
             sticker_bytes = convert_to_sticker_webp(data, mime, name)
             bio = io.BytesIO(sticker_bytes)
             bio.name = "sticker.webp"
@@ -424,11 +394,9 @@ async def fig_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.effective_message.reply_text(f"eu não consegui converter essa imagem em fig. motivo: {e}")
         return
 
-    # Envia figurinha respondendo ao comando do membro
     try:
        await update.effective_message.reply_sticker(sticker=InputFile(bio))
     except Exception as e:
-        # Se falhar como sticker, tenta enviar como foto (fallback raro)
         try:
             bio.seek(0)
             await update.effective_message.reply_photo(photo=InputFile(bio), caption="enviei como imagem pq o telegram ñ permitiu a conversão")
@@ -438,7 +406,7 @@ async def fig_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def vergrupos_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = update.effective_user
     if not user or not is_owner(user.id):
-        return  # ignora silenciosamente
+        return  
 
     rows = list_groups()
     if not rows:
@@ -453,7 +421,7 @@ async def vergrupos_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def sair_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = update.effective_user
     if not user or not is_owner(user.id):
-        return  # ignora silenciosamente
+        return  
 
     args = context.args or []
     if not args:
@@ -494,18 +462,15 @@ def main():
     init_db()
     app: Application = ApplicationBuilder().token(BOT_TOKEN).build()
 
-    # Handlers de comandos
     app.add_handler(CommandHandler("start", start_cmd))
     app.add_handler(CommandHandler("ping", ping_cmd))
     app.add_handler(CommandHandler("fig", fig_cmd))
     app.add_handler(CommandHandler("vergrupos", vergrupos_cmd))
     app.add_handler(CommandHandler("sair", sair_cmd))
 
-    # Handler para ser informado quando entra/sai de grupos
     app.add_handler(ChatMemberHandler(my_chat_member, ChatMemberHandler.MY_CHAT_MEMBER))
 
     print("Bot rodando... Ctrl+C para parar.")
-    # você já importa Update lá em cima: from telegram import Update, InputFile
     app.run_polling(allowed_updates=Update.ALL_TYPES)
 
 if __name__ == "__main__":
