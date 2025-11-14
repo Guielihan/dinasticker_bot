@@ -61,14 +61,12 @@ if not _is_valid_ffmpeg(FFMPEG_BIN):
     FFMPEG_BIN = ""
 
 
-# 2) PATH tradicional
 if not FFMPEG_BIN:
     cand = shutil.which("ffmpeg") or shutil.which("ffmpeg.exe")
     if cand:
         FFMPEG_BIN = cand
 
 
-# 3) App Execution Alias (Windows) via PowerShell
 if not FFMPEG_BIN and os.name == "nt":
     try:
         out = subprocess.check_output(
@@ -81,7 +79,6 @@ if not FFMPEG_BIN and os.name == "nt":
         pass
 
 
-# 4) Teste real: se 'ffmpeg -version' roda, usa literal "ffmpeg"
 if not FFMPEG_BIN:
     try:
         subprocess.run(["ffmpeg", "-version"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, check=True)
@@ -99,7 +96,6 @@ def ensure_dir(path: str):
     try:
         os.makedirs(path, exist_ok=True)
     except FileExistsError:
-        # Existe um ARQUIVO com esse nome: renomeia e cria a pasta
         if os.path.isfile(path):
             os.replace(path, path + ".bak")
             os.makedirs(path, exist_ok=True)
