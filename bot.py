@@ -33,7 +33,11 @@ from telegram.ext import (
     ChatMemberHandler,
 )
 
-load_dotenv()
+# -------------------------
+# Config & DB
+# -------------------------
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))  # <-- suba esta linha para antes do load_dotenv
+load_dotenv(dotenv_path=os.path.join(BASE_DIR, ".env"), override=True)
 
 BOT_TOKEN = os.getenv("BOT_TOKEN", "").strip()
 OWNER_ID = int(os.getenv("OWNER_ID", "0"))
