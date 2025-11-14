@@ -36,7 +36,7 @@ from telegram.ext import (
 # -------------------------
 # Config & DB
 # -------------------------
-BASE_DIR = os.path.dirname(os.path.abspath(__file__))  # <-- suba esta linha para antes do load_dotenv
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))  # <-- suba esta linha pra antes do load_dotenv
 load_dotenv(dotenv_path=os.path.join(BASE_DIR, ".env"), override=True)
 
 BOT_TOKEN = os.getenv("BOT_TOKEN", "").strip()
@@ -57,44 +57,39 @@ def _is_valid_ffmpeg(path_str: str) -> bool:
     return p.is_file()
 
 
-FFMPEG_BIN = os.getenv("FFMPEG_BIN", "").strip().strip('"').strip("'")
-FFMPEG_BIN = FFMPEG_BIN.replace("\\", "/") 
+FFMPEG_BIN = os.getenv("FFMPEG_BIN", "").strip().strip('"')
 
-
-if not _is_valid_ffmpeg(FFMPEG_BIN):
-    FFMPEG_BIN = ""
-
-
-if not FFMPEG_BIN:
-    cand = shutil.which("ffmpeg") or shutil.which("ffmpeg.exe")
-    if cand:
-        FFMPEG_BIN = cand
-
+# se veio do .env e é um arquivo válido, usa direto
+if FFMPEG_BIN and os.path.isfile(FFMPEG_BIN):
+    pass
+else:
+    # tenta PATH normal
+    FFMPEG_BIN = shutil.which("ffmpeg") or shutil.which("ffmpeg.exe") or FFMPEG_BIN
 
 if not FFMPEG_BIN and os.name == "nt":
+    # alias/appexecution (windows)
     try:
         out = subprocess.check_output(
-            ["powershell", "-NoProfile", "-Command", "Get-Command ffmpeg | Select-Object -ExpandProperty Source"],
+            ["powershell", "-NoProfile", "-Command", "(Get-Command ffmpeg).Source"],
             text=True
         ).strip()
-        if out and _is_valid_ffmpeg(out):
+        if out:
             FFMPEG_BIN = out
     except Exception:
         pass
 
-
 if not FFMPEG_BIN:
+    # testa chamar 'ffmpeg' puro
     try:
         subprocess.run(["ffmpeg", "-version"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, check=True)
         FFMPEG_BIN = "ffmpeg"
     except Exception:
         pass
 
-
-print(f"FFmpeg detectado: {FFMPEG_BIN or 'NÃO ENCONTRADO'}")
+print("FFmpeg detectado:", FFMPEG_BIN or "NÃO ENCONTRADO")
 
 if not BOT_TOKEN:
-    raise RuntimeError("Defina BOT_TOKEN no .env")
+    raise RuntimeError("defina BOT_TOKEN no .env")
 
 def ensure_dir(path: str):
     try:
@@ -107,7 +102,6 @@ def ensure_dir(path: str):
             raise
     return path
 
-BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 DATA_DIR = ensure_dir(os.path.join(BASE_DIR, "data"))
 TMP_DIR  = ensure_dir(os.path.join(DATA_DIR, "stickers_tmp"))
 
