@@ -33,6 +33,8 @@ from telegram.ext import (
     ChatMemberHandler,
 )
 
+from quote_maker import make_quote_sticker
+
 # -------------------------
 # Config & DB
 # -------------------------
@@ -341,6 +343,53 @@ async def extract_media_bytes_and_meta(update: Update, context: ContextTypes.DEF
 
     return None, None, None
 
+def build_quote_from_chain(msg, max_depth: int, reply_mode: bool):
+    """
+    Monta texto e nome do autor a partir de uma cadeia de respostas.
+
+    - se reply_mode == False -> só usa a mensagem que você está respondendo (ou a própria)
+    - se reply_mode == True  -> sobe pela árvore reply_to_message até max_depth
+    """
+    texts = []
+    authors = []
+
+    # ponto de partida: se estiver respondendo alguém, usa essa mensagem;
+    # senão, usa a própria mensagem do comando (ex.: /fig texto aqui)
+    cur = msg.reply_to_message if msg.reply_to_message else msg
+
+    depth = 0
+    while cur and depth < max_depth:
+        content = (cur.text or cur.caption or "").strip()
+        if content:
+            texts.append(content)
+            if cur.from_user:
+                authors.append(cur.from_user.first_name)
+            depth += 1
+
+        if not reply_mode:
+            # modo normal: só 1 mensagem
+            break
+
+        # modo /fig r N -> sobe para a próxima mensagem na cadeia
+        cur = cur.reply_to_message
+
+    if not texts:
+        return None, None
+
+    # Queremos a mensagem mais antiga em cima
+    texts = list(reversed(texts))
+
+    authors = [a for a in authors if a]
+    author_name = None
+    if authors:
+        if all(a == authors[0] for a in authors):
+            author_name = authors[0]
+        else:
+            author_name = "Várias vozes"
+
+    full_text = "\n".join(texts)
+    return author_name, full_text
+
 async def start_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not await reply_only_in_allowed(update, context):
         return
@@ -362,44 +411,97 @@ async def fig_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not await reply_only_in_allowed(update, context):
         return
 
+    msg = update.effective_message
+    args = context.args or []
+
+    # ---------------------------
+    # 1) interpretar argumentos:
+    #    /fig        -> depth=1, reply_mode=False
+    #    /fig r      -> depth=2, reply_mode=True (mensagem respondida + anterior)
+    #    /fig r 2    -> depth=2, reply_mode=True
+    #    /fig r 3    -> depth=3, reply_mode=True (até 3 na cadeia)
+    # ---------------------------
+    reply_mode = False
+    depth = 1
+
+    if args:
+        if args[0].lower() == "r":
+            reply_mode = True
+            # se vier um número depois do r, usa como quantidade max de mensagens
+            if len(args) > 1 and args[1].isdigit():
+                depth = max(1, min(int(args[1]), 5))
+            else:
+                # padrão para /fig r -> 2 mensagens (a atual e a anterior)
+                depth = 2
+        elif args[0].isdigit():
+            depth = max(1, min(int(args[0]), 5))
+
+    # ---------------------------
+    # 2) primeiro tenta mídia (comportamento antigo)
+    # ---------------------------
     data, mime, name = await extract_media_bytes_and_meta(update, context)
-    if not data:
-        await update.effective_message.reply_text(
-            "use /fig respondendo a uma imagem, arquivo ou gif."
-        )
-        return
 
-    if (mime or "").lower() == "image/svg+xml" and not CAIRO_OK:
-        await update.effective_message.reply_text(
-            "recebi um SVG, mas a conversão de SVG está desabilitada. dica: instala `cairosvg` pra ativar"
-        )
-        return
+    if data:
+        # tinha mídia -> funciona igual antes
+        if (mime or "").lower() == "image/svg+xml" and not CAIRO_OK:
+            await msg.reply_text(
+                "recebi um SVG, mas a conversão de SVG está desabilitada. dica: instala `cairosvg` pra ativar"
+            )
+            return
 
-    ext = (os.path.splitext(name or "")[1] or "").lower()
-    is_video_like = (mime or "").lower().startswith("video/") or ext in {".mp4", ".mov", ".mkv", ".webm"}
-    is_gif = (mime or "").lower() == "image/gif" or ext == ".gif"
+        ext = (os.path.splitext(name or "")[1] or "").lower()
+        is_video_like = (mime or "").lower().startswith("video/") or ext in {".mp4", ".mov", ".mkv", ".webm"}
+        is_gif = (mime or "").lower() == "image/gif" or ext == ".gif"
 
-    try:
-        if is_video_like or is_gif:
-            sticker_bytes = convert_to_animated_sticker_webm(data, mime, name)
-            bio = io.BytesIO(sticker_bytes)
-            bio.name = "sticker.webm"
-        else:
-            sticker_bytes = convert_to_sticker_webp(data, mime, name)
-            bio = io.BytesIO(sticker_bytes)
-            bio.name = "sticker.webp"
-    except Exception as e:
-        await update.effective_message.reply_text(f"eu não consegui converter essa imagem em fig. motivo: {e}")
-        return
-
-    try:
-       await update.effective_message.reply_sticker(sticker=InputFile(bio))
-    except Exception as e:
         try:
-            bio.seek(0)
-            await update.effective_message.reply_photo(photo=InputFile(bio), caption="enviei como imagem pq o telegram ñ permitiu a conversão")
-        except Exception:
-            await update.effective_message.reply_text(f"falhei ao tentar enviar a sua figurinha: {e}")
+            if is_video_like or is_gif:
+                sticker_bytes = convert_to_animated_sticker_webm(data, mime, name)
+                bio = io.BytesIO(sticker_bytes)
+                bio.name = "sticker.webm"
+            else:
+                sticker_bytes = convert_to_sticker_webp(data, mime, name)
+                bio = io.BytesIO(sticker_bytes)
+                bio.name = "sticker.webp"
+        except Exception as e:
+            await msg.reply_text(f"eu não consegui converter essa imagem em fig. motivo: {e}")
+            return
+
+        try:
+            await msg.reply_sticker(sticker=InputFile(bio))
+        except Exception as e:
+            try:
+                bio.seek(0)
+                await msg.reply_photo(
+                    photo=InputFile(bio),
+                    caption="enviei como imagem porque o Telegram não permitiu a conversão pra fig."
+                )
+            except Exception:
+                await msg.reply_text(f"falhei ao tentar enviar a sua fig: {e}")
+        return  # importante: encerra aqui se era mídia
+
+    # ---------------------------
+    # 3) sem mídia -> modo QUOTE
+    # ---------------------------
+    author_name, quote_text = build_quote_from_chain(msg, depth, reply_mode)
+
+    if not quote_text:
+        await msg.reply_text(
+            "não achei texto pra transformar em fig.\n"
+            "use /fig respondendo a uma mensagem de texto, ou /fig respondendo a uma imagem/gif/vídeo"
+        )
+        return
+
+    try:
+        sticker_bytes = make_quote_sticker(
+            text=quote_text,
+            author_name=author_name,
+            theme="dark",
+        )
+        bio = io.BytesIO(sticker_bytes)
+        bio.name = "quote.webp"
+        await msg.reply_sticker(sticker=InputFile(bio))
+    except Exception as e:
+        await msg.reply_text(f"não consegui gerar a fig de quote: {e}")
 
 async def vergrupos_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = update.effective_user
@@ -436,14 +538,14 @@ async def sair_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
         ok = await context.bot.leave_chat(target_id)
         if ok:
             delete_group(target_id)
-            await update.effective_message.reply_text(f"Saí do grupo {target_id}.")
+            await update.effective_message.reply_text(f"saí do grupo {target_id}.")
         else:
-            await update.effective_message.reply_text(f"Não consegui sair do grupo {target_id}.")
+            await update.effective_message.reply_text(f"eu não consegui sair do grupo {target_id}.")
     except Exception as e:
-        await update.effective_message.reply_text(f"Erro ao sair do grupo {target_id}: {e}")
+        await update.effective_message.reply_text(f"erro ao sair do grupo {target_id}: {e}")
 
 async def my_chat_member(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Atualiza DB quando o bot entra/sai de grupos."""
+    """atualiza DB quando o bot entra/sai de grupos."""
     chat = update.effective_chat
     if not chat:
         return
