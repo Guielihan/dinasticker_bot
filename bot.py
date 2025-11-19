@@ -45,6 +45,16 @@ BOT_TOKEN = os.getenv("BOT_TOKEN", "").strip()
 OWNER_ID = int(os.getenv("OWNER_ID", "0"))
 ALLOWED_CHAT_ID = int(os.getenv("ALLOWED_CHAT_ID", "0"))
 
+# grupos permitidos afiliados ao dinastia
+ALLOWED_EXTRA_CHAT_IDS = {
+    -1003291183043,  # DINASTWOLF
+    -1003126092312,  # DINAST.I
+    -1003411843217,  # DINASTV
+    -1003115970654,  # DINASTMUSIC
+    -1002590261571,  # DINASTCINE
+    -1002965380104,  # D. HOTEL
+}
+
 
 from pathlib import Path
 
@@ -175,7 +185,12 @@ def is_owner(user_id: int) -> bool:
     return user_id == OWNER_ID
 
 def is_allowed_chat(chat_id: int) -> bool:
-    return chat_id == ALLOWED_CHAT_ID
+    # grupo principal (no .env)
+    if chat_id == ALLOWED_CHAT_ID:
+        return True
+
+    # grupos afiliados
+    return chat_id in ALLOWED_EXTRA_CHAT_IDS
 
 async def reply_only_in_allowed(update: Update, context: ContextTypes.DEFAULT_TYPE) -> bool:
     """Retorna True se pode responder; caso contrário, ignora."""
@@ -393,7 +408,7 @@ def build_quote_from_chain(msg, max_depth: int, reply_mode: bool):
 async def start_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not await reply_only_in_allowed(update, context):
         return
-    await update.effective_message.reply_text("Faaala! Tudo bem? Bot das figurinhas do Dinastia na área. use /fig respondendo a uma imagem")
+    await update.effective_message.reply_text("Faaala! Tudo bem? Eu sou o Bot de figurinhas oficial do @GrupoDinastia. Use /fig respondendo a uma imagem/video/gif/texto.")
 
 async def ping_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not await reply_only_in_allowed(update, context):
