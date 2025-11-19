@@ -35,10 +35,7 @@ from telegram.ext import (
 
 from quote_maker import make_quote_sticker
 
-# -------------------------
-# Config & DB
-# -------------------------
-BASE_DIR = os.path.dirname(os.path.abspath(__file__))  # <-- suba esta linha pra antes do load_dotenv
+BASE_DIR = os.path.dirname(os.path.abspath(__file__)) 
 load_dotenv(dotenv_path=os.path.join(BASE_DIR, ".env"), override=True)
 
 BOT_TOKEN = os.getenv("BOT_TOKEN", "").strip()
@@ -53,8 +50,39 @@ ALLOWED_EXTRA_CHAT_IDS = {
     -1003115970654,  # DINASTMUSIC
     -1002590261571,  # DINASTCINE
     -1002965380104,  # D. HOTEL
+    -1002563751719,  # DINASTIA
 }
 
+# mapa de cores p/o comando /fig <cor>
+COLOR_MAP = {
+    # português
+    "roxo":   "#2c1c4a",
+    "rosa":   "#ff4f9a",
+    "vermelho": "#ff4b4b",
+    "azul":   "#3b82f6",
+    "verde":  "#22c55e",
+    "amarelo": "#eab308",
+    "laranja": "#f97316",
+    "ciano":  "#22d3ee",
+    "magenta": "#e11d48",
+    "cinza":  "#4b5563",
+    "preto":  "#111827",
+    "branco": "#f9fafb",
+
+    # inglês
+    "purple": "#2c1c4a",
+    "pink":   "#ff4f9a",
+    "red":    "#ff4b4b",
+    "blue":   "#3b82f6",
+    "green":  "#22c55e",
+    "yellow": "#eab308",
+    "orange": "#f97316",
+    "cyan":   "#22d3ee",
+    "gray":   "#4b5563",
+    "grey":   "#4b5563",
+    "black":  "#111827",
+    "white":  "#f9fafb",
+}
 
 from pathlib import Path
 
@@ -63,7 +91,6 @@ def _is_valid_ffmpeg(path_str: str) -> bool:
     if not path_str:
         return False
     p = Path(path_str.strip().strip('"').strip("'"))
-    # se for um nome simples (ex.: "ffmpeg"), aceita
     if os.path.sep not in str(p) and os.path.altsep not in str(p):
         return shutil.which(str(p)) is not None
     return p.is_file()
@@ -71,15 +98,12 @@ def _is_valid_ffmpeg(path_str: str) -> bool:
 
 FFMPEG_BIN = os.getenv("FFMPEG_BIN", "").strip().strip('"')
 
-# se veio do .env e é um arquivo válido, usa direto
 if FFMPEG_BIN and os.path.isfile(FFMPEG_BIN):
     pass
 else:
-    # tenta PATH normal
     FFMPEG_BIN = shutil.which("ffmpeg") or shutil.which("ffmpeg.exe") or FFMPEG_BIN
 
 if not FFMPEG_BIN and os.name == "nt":
-    # alias/appexecution (windows)
     try:
         out = subprocess.check_output(
             ["powershell", "-NoProfile", "-Command", "(Get-Command ffmpeg).Source"],
@@ -91,7 +115,6 @@ if not FFMPEG_BIN and os.name == "nt":
         pass
 
 if not FFMPEG_BIN:
-    # testa chamar 'ffmpeg' puro
     try:
         subprocess.run(["ffmpeg", "-version"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, check=True)
         FFMPEG_BIN = "ffmpeg"
@@ -185,15 +208,14 @@ def is_owner(user_id: int) -> bool:
     return user_id == OWNER_ID
 
 def is_allowed_chat(chat_id: int) -> bool:
-    # grupo principal (no .env)
     if chat_id == ALLOWED_CHAT_ID:
         return True
 
-    # grupos afiliados
+    # GPS AFILIADOS
     return chat_id in ALLOWED_EXTRA_CHAT_IDS
 
 async def reply_only_in_allowed(update: Update, context: ContextTypes.DEFAULT_TYPE) -> bool:
-    """Retorna True se pode responder; caso contrário, ignora."""
+    """retorna True se pode responder; caso contrário, ignora."""
     chat = update.effective_chat
     if not chat:
         return False
@@ -202,14 +224,14 @@ async def reply_only_in_allowed(update: Update, context: ContextTypes.DEFAULT_TY
     return False
 
 def pil_from_svg_bytes(svg_bytes: bytes) -> Image.Image:
-    """Converte SVG -> PNG em memória e abre no Pillow."""
+    """converte SVG -> PNG em memória e abre no Pillow."""
     if not CAIRO_OK:
         raise RuntimeError("SVG não habilitado. Instale cairosvg.")
     png_bytes = cairosvg.svg2png(bytestring=svg_bytes)
     return Image.open(io.BytesIO(png_bytes)).convert("RGBA")
 
 def fit_to_sticker_canvas(img: Image.Image, size: int = 512) -> Image.Image:
-    """Redimensiona mantendo proporção e centraliza em canvas 512x512 transparente."""
+    """redimensiona mantendo proporção e centraliza em canvas 512x512 transparente."""
     img = img.convert("RGBA")
     img.thumbnail((size, size), Image.LANCZOS)
     canvas = Image.new("RGBA", (size, size), (0, 0, 0, 0))
@@ -219,7 +241,7 @@ def fit_to_sticker_canvas(img: Image.Image, size: int = 512) -> Image.Image:
     return canvas
 
 def convert_to_sticker_webp(input_bytes: bytes, mime_type: str, filename: str | None = None) -> bytes:
-    """Converte bytes de imagem (ou 1º frame de vídeo/animation) em WebP 512x512."""
+    """converte bytes de imagem (ou 1º frame de vídeo/animation) em WebP 512x512."""
     mime_type = (mime_type or "").lower()
     ext = (os.path.splitext(filename or "")[1] or "").lower()
 
@@ -368,8 +390,6 @@ def build_quote_from_chain(msg, max_depth: int, reply_mode: bool):
     texts = []
     authors = []
 
-    # ponto de partida: se estiver respondendo alguém, usa essa mensagem;
-    # senão, usa a própria mensagem do comando (ex.: /fig texto aqui)
     cur = msg.reply_to_message if msg.reply_to_message else msg
 
     depth = 0
@@ -382,16 +402,13 @@ def build_quote_from_chain(msg, max_depth: int, reply_mode: bool):
             depth += 1
 
         if not reply_mode:
-            # modo normal: só 1 mensagem
             break
 
-        # modo /fig r N -> sobe para a próxima mensagem na cadeia
         cur = cur.reply_to_message
 
     if not texts:
         return None, None
 
-    # Queremos a mensagem mais antiga em cima
     texts = list(reversed(texts))
 
     authors = [a for a in authors if a]
@@ -429,35 +446,28 @@ async def fig_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     msg = update.effective_message
     args = context.args or []
 
-    # ---------------------------
-    # 1) interpretar argumentos:
-    #    /fig        -> depth=1, reply_mode=False
-    #    /fig r      -> depth=2, reply_mode=True (mensagem respondida + anterior)
-    #    /fig r 2    -> depth=2, reply_mode=True
-    #    /fig r 3    -> depth=3, reply_mode=True (até 3 na cadeia)
-    # ---------------------------
     reply_mode = False
     depth = 1
+    color_name = None
 
-    if args:
-        if args[0].lower() == "r":
+    for tok in args:
+        t = tok.lower()
+        if t == "r":
             reply_mode = True
-            # se vier um número depois do r, usa como quantidade max de mensagens
-            if len(args) > 1 and args[1].isdigit():
-                depth = max(1, min(int(args[1]), 5))
-            else:
-                # padrão para /fig r -> 2 mensagens (a atual e a anterior)
-                depth = 2
-        elif args[0].isdigit():
-            depth = max(1, min(int(args[0]), 5))
+        elif t.isdigit():
+            depth = max(1, min(int(t), 5))
+        else:
+            # tenta cor
+            if color_name is None and t in COLOR_MAP:
+                color_name = t
 
-    # ---------------------------
-    # 2) primeiro tenta mídia (comportamento antigo)
-    # ---------------------------
+    bg_hex = None
+    if color_name:
+        bg_hex = COLOR_MAP.get(color_name)
+
     data, mime, name = await extract_media_bytes_and_meta(update, context)
 
     if data:
-        # tinha mídia -> funciona igual antes
         if (mime or "").lower() == "image/svg+xml" and not CAIRO_OK:
             await msg.reply_text(
                 "recebi um SVG, mas a conversão de SVG está desabilitada. dica: instala `cairosvg` pra ativar"
@@ -492,11 +502,8 @@ async def fig_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 )
             except Exception:
                 await msg.reply_text(f"falhei ao tentar enviar a sua fig: {e}")
-        return  # importante: encerra aqui se era mídia
+        return  
 
-    # ---------------------------
-    # 3) sem mídia -> modo QUOTE
-    # ---------------------------
     author_name, quote_text = build_quote_from_chain(msg, depth, reply_mode)
 
     if not quote_text:
@@ -506,11 +513,66 @@ async def fig_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
         return
 
+    # tenta pegar avatar + emoji de status premium
+    avatar_img = None
+    badge_img = None
+    try:
+        # mensagem “principal” da quote (a que você está respondendo; se não tiver, usa a sua)
+        base_msg = msg.reply_to_message if msg.reply_to_message else msg
+        user = base_msg.from_user
+
+        if user:
+            # nome base (pra garantir que venha igual o do Telegram)
+            display_name = user.first_name or ""
+            if user.last_name:
+                display_name += f" {user.last_name}"
+            # se o build_quote não definiu autor, usa o nome completo
+            if not author_name:
+                author_name = display_name
+
+            status_emoji = ""
+
+            # tenta descobrir o emoji de status premium (custom emoji) como IMAGEM
+            try:
+                chat_info = await context.bot.get_chat(user.id)
+                emoji_id = getattr(chat_info, "emoji_status_custom_emoji_id", None)
+                if emoji_id:
+                    stickers = await context.bot.get_custom_emoji_stickers([emoji_id])
+                    if stickers:
+                        st = stickers[0]
+                        f = await context.bot.get_file(st.file_id)
+                        badge_bytes = await f.download_as_bytearray()
+                        badge_img = Image.open(io.BytesIO(badge_bytes)).convert("RGBA")
+            except Exception:
+                badge_img = None
+
+            if getattr(user, "is_premium", False) and badge_img is None:
+                if author_name:
+                    author_name = f"{author_name} 💎"
+                else:
+                    author_name = "💎"
+
+            # baixa a foto de perfil (se tiver)
+            photos = await context.bot.get_user_profile_photos(user.id, limit=1)
+            if photos.total_count > 0:
+                first_photo_sizes = photos.photos[0]
+                best_photo = first_photo_sizes[-1]
+                file = await context.bot.get_file(best_photo.file_id)
+                photo_bytes = await file.download_as_bytearray()
+                avatar_img = Image.open(io.BytesIO(photo_bytes)).convert("RGBA")
+    except Exception:
+        # se qualquer coisa der errado, só segue sem avatar
+        avatar_img = None
+        badge_img = None
+
     try:
         sticker_bytes = make_quote_sticker(
             text=quote_text,
             author_name=author_name,
+            avatar_img=avatar_img,
+            badge_img=badge_img,
             theme="dark",
+            bg_hex=bg_hex,
         )
         bio = io.BytesIO(sticker_bytes)
         bio.name = "quote.webp"
