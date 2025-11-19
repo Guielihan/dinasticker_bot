@@ -14,7 +14,13 @@ def _wrap_text(draw: ImageDraw.ImageDraw, text: str, font: ImageFont.ImageFont, 
     lines, cur = [], ""
     for w in words:
         test = (cur + " " + w).strip()
-        w_px, _ = draw.textsize(test, font=font)
+        # mede a largura do texto compatível com Pillow novo
+        try:
+            bbox = draw.textbbox((0, 0), test, font=font)
+            w_px = bbox[2] - bbox[0]
+        except AttributeError:
+            # fallback pra versões mais antigas que ainda tem textsize
+            w_px, _ = draw.textsize(test, font=font)
         if w_px <= max_w or not cur:
             cur = test
         else:
